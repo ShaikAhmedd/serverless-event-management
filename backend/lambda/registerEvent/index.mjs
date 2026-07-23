@@ -16,16 +16,28 @@ export const handler = async (event) => {
     // Get eventId from URL
     const eventId = event.pathParameters?.eventId;
 
-    // Get userId from request body
-    const body = JSON.parse(event.body || "{}");
-    const { userId } = body;
+    // Get authenticated user information from Cognito
+const claims = event.requestContext?.authorizer?.claims;
 
+if (!claims) {
+  return {
+    statusCode: 401,
+    body: JSON.stringify({
+      message: "Unauthorized"
+    })
+  };
+}
+
+const userId = claims["cognito:username"];
+const email = claims.email;
+
+    
     // Validate input
-    if (!eventId || !userId) {
+    if (!eventId) {
       return {
         statusCode: 400,
         body: JSON.stringify({
-          message: "eventId and userId are required"
+          message: "eventId is required"
         })
       };
     }
@@ -41,14 +53,14 @@ export const handler = async (event) => {
     );
 
     // Check if event exists
-    if (!eventResponse.Item) {
-      return {
-        statusCode: 404,
-        body: JSON.stringify({
-          message: "Event not found"
-        })
-      };
-    }
+    if (!eventId) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({
+      message: "eventId is required"
+    })
+  };
+}
 
     const eventData = eventResponse.Item;
 
@@ -64,12 +76,12 @@ export const handler = async (event) => {
 
     // Create registration
     const registration = {
-      registrationId: crypto.randomUUID(),
-      eventId: eventId,
-      userId: userId,
-      registeredAt: new Date().toISOString()
-    };
-
+  registrationId: crypto.randomUUID(),
+  eventId,
+  userId,
+  email,
+  registeredAt: new Date().toISOString()
+};
     await docClient.send(
       new PutCommand({
         TableName: "Registrations",
@@ -101,13 +113,14 @@ export const handler = async (event) => {
     };
 
   } catch (error) {
-    console.error(error);
+  console.error(error);
 
-    return {
-      statusCode: 500,
-      body: JSON.stringify({
-        message: "Internal Server Error"
-      })
-    };
-  }
-};
+  return {
+    statusCode: 500,
+    body: JSON.stringify({
+      message: error.message,
+      error: error.name,
+      stack: error.stack
+    })
+  };
+}
